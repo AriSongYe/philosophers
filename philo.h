@@ -6,7 +6,7 @@
 /*   By: yecsong <yecsong@student.42seoul.kr>       +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 01:01:17 by yecsong           #+#    #+#             */
-/*   Updated: 2022/11/30 05:36:34 by yecsong          ###   ########.fr       */
+/*   Updated: 2022/12/01 16:40:37 by yecsong          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -33,7 +33,7 @@ typedef struct	s_time_info
 	int				must_eat_time;
 	struct timeval	start;
 	struct timeval	now;
-	pthread_mutex_t	mutex;
+	pthread_mutex_t	mutex[5];
 }	t_time_info;
 
 typedef struct	s_arg
