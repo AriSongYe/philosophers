@@ -6,141 +6,260 @@
 /*   By: yecsong <yecsong@student.42seoul.kr>       +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 01:01:07 by yecsong           #+#    #+#             */
-/*   Updated: 2022/12/05 12:57:02 by yecsong          ###   ########.fr       */
+/*   Updated: 2022/12/08 18:30:46 by yecsong          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "philo.h"
 
-t_arg	*init_arg(t_time_info *info)
+int	ft_atoi(const char *str)
 {
-	t_arg	*new;
-	int		*state;
-	int		i;
-	
-	new = (t_arg *)malloc(sizeof(t_arg));
-	state = (int *)malloc(sizeof(int) * info->number_of_philo);
+	int		sign;
+	size_t	i;
+	size_t	num;
+
+	num = 0;
+	sign = 1;
 	i = 0;
-	while (i < info->number_of_philo)
-		state[i++] = SLEEP;
-	new->state = state;
-	new->info = info;
-	new->index = 0;
-	return (new);
+	while ((str[i] >= '\t' && str[i] <= '\r') || str[i] == ' ')
+		i++;
+	if (str[i] == '-' || str[i] == '+')
+	{
+		if (str[i] == '-')
+			sign *= -1;
+		i++;
+	}
+	while (str[i] >= '0' && str[i] <= '9')
+	{
+		num = num * 10 + (str[i] - '0');
+		i++;
+	}
+	return (sign * num);
 }
 
-t_time_info	*init_info(char **argv)
-{
-	t_time_info	*info;
-
-	info = (t_time_info *)malloc(sizeof(t_time_info));
-	info->number_of_philo = ft_atoi(argv[1]);
-	info->time_to_die = ft_atoi(argv[2]);
-	info->time_to_eat = ft_atoi(argv[3]);
-	info->time_to_sleep = ft_atoi(argv[4]);
-	info->must_eat_time = ft_atoi(argv[5]);
-	return (info);
-}
-
-void	eating(t_arg **arg)
-{
-	printf("%d: Now, I'm eating\n", (*arg)->index);
-	usleep((*arg)->info->time_to_eat);
-}
-
-void	sleeping(t_arg **arg)
-{
-	printf("%d\n: Now, I'm sleeping\n", (*arg)->index);
-	usleep((*arg)->info->time_to_sleep);
-}
-
-int	left_index(t_arg **arg)
-{
-	return (((*arg)->index + (*arg)->info->number_of_philo - 1) \
-			% (*arg)->info->number_of_philo);
-}
-
-int	right_index(t_arg **arg)
-{
-//	return (((*arg)->index + 1) % (*arg)->info->number_of_philo);
-	return ((*arg)->index);
-}
-
-void	test(t_arg **arg ,int index)
-{
-	if ((*arg)->state[index] == HUNGRY && \
-			(*arg)->state[left_index(arg)] != EATING && \
-			(*arg)->state[right_index(arg)] != EATING)
-		(*arg)->state[index] = EATING;
-}
-
-void	pick_up(t_arg **arg)
-{
-	pthread_mutex_lock(&(*arg)->info->mutex);
-	(*arg)->state[(*arg)->index] = HUNGRY;
-	test(arg, (*arg)->index);
-	pthread_mutex_unlock(&(*arg)->info->mutex);
-}
-
-void	put_down(t_arg **arg)
-{
-	pthread_mutex_lock(&(*arg)->info->mutex);
-	(*arg)->state[(*arg)->index] = SLEEP;
-	test(arg, left_index(arg));
-	test(arg, right_index(arg));
-	pthread_mutex_unlock(&(*arg)->info->mutex);
-}
-
-void	*pthread_handler(void *param)
+t_arg	*init_arg(char **argv)
 {
 	t_arg	*arg;
+	int		i;
+
+	i = 0;
+	arg = (t_arg*)malloc(sizeof(t_arg));
+	arg->philo_idx = 0;
+	arg->number_of_philo = ft_atoi(argv[1]);
+	arg->time_to_die = ft_atoi(argv[2]);
+	arg->time_to_eat = ft_atoi(argv[3]);
+	arg->time_to_sleep = ft_atoi(argv[4]);
+	arg->start = NULL;
+	arg->fork = (int *)malloc(sizeof(int) * arg->number_of_philo);
+	arg->mutex = (pthread_mutex_t*)malloc \
+				 (sizeof (pthread_mutex_t) * arg->number_of_philo);
+	arg->time_mutex = (pthread_mutex_t*)malloc \
+					  (sizeof(pthread_mutex_t) * arg->number_of_philo);
+	arg->start = (struct timeval *)malloc(sizeof(struct timeval));
+	arg->start->tv_sec = 0;
+	arg->start->tv_usec = 0;
+	while (i < arg->number_of_philo)
+	{
+		pthread_mutex_init(&arg->mutex[i], NULL);
+		pthread_mutex_init(&arg->time_mutex[i], NULL);
+		arg->fork[i] = 0;
+		i++;
+	}
+	pthread_mutex_init(&arg->philo_mutex, NULL);
+	// ㅇㅏ직 쓰레드 만들어지기 전
+	return (arg);
+}
+
+void	print_time_stamp(t_arg *arg, int idx, int flag)
+{
+	int	diff;
 	
-	
-	arg = (t_arg *)param;
+	gettimeofday(&arg->philo[idx].now, NULL);
+	diff = (arg->philo[idx].now.tv_sec - arg->start->tv_sec) * 1000 \
+		   + (arg->philo[idx].now.tv_usec - arg->start->tv_usec) / 1000;
+	if (flag == PICK_UP_FORK)
+		printf("%d %d has taken a fork\n", diff ,idx);
+	else if (flag == IS_EATING)
+		printf("%d %d is eating\n", diff ,idx);
+	else if (flag == IS_SLEEPING)
+		printf("%d %d is sleeping\n", diff ,idx);
+	else if (flag == IS_THINKING)
+		printf("%d %d is thinking\n", diff ,idx);
+	else if (flag == DIE)
+		printf("%d %d die\n", diff ,idx);
+}
+
+void	precision_sleep(int time)
+{
+	struct timeval	now;
+	int				now_ms;
+	int				start;
+
+	gettimeofday(&now, NULL);
+	start =  now.tv_sec * 1000 + now.tv_usec / 1000;
 	while (1)
 	{
-		printf("index =%d\n", arg->index);
-		sleeping(&arg);
-		pick_up(&arg);
-		eating(&arg);
-		put_down(&arg);
+		gettimeofday(&now, NULL);
+		now_ms = now.tv_sec * 1000 + now.tv_usec / 1000;
+		if (now_ms > start + time)
+			break ;
+	}
+}
+
+void	*handler(void *arg)
+{
+	t_arg	*tmp; 
+	int		idx;
+
+	tmp = (t_arg *)arg;
+	pthread_mutex_lock(&tmp->philo_mutex);
+	idx	= tmp->philo_idx;
+	tmp->philo_idx++;
+	pthread_mutex_unlock(&tmp->philo_mutex);
+	while (1)
+	{
+		pthread_mutex_lock(&tmp->philo_mutex);
+		if (tmp->philo_idx == tmp->number_of_philo)
+		{
+			if (tmp->start->tv_sec == 0 && tmp->start->tv_usec == 0 )
+				gettimeofday(tmp->start, NULL);
+			pthread_mutex_unlock(&tmp->philo_mutex);
+			break ;
+		}
+		pthread_mutex_unlock(&tmp->philo_mutex);
+	}
+	int i;
+
+	i = 0;
+	while (i < tmp->number_of_philo)
+	{
+		pthread_mutex_lock(&tmp->time_mutex[idx]);
+		tmp->philo[idx].last_eat.tv_sec = tmp->start->tv_sec;
+		tmp->philo[idx].last_eat.tv_usec = tmp->start->tv_usec;
+		pthread_mutex_unlock(&tmp->time_mutex[idx]);
+		i++;
+	}
+	if (idx & 1)
+		usleep(tmp->time_to_eat * 200);
+	// pick up fork
+	tmp->philo[idx].left = (tmp->number_of_philo + idx - 1) % tmp->number_of_philo;
+	tmp->philo[idx].right = idx;
+	while (1)
+	{
+		if (idx == 0)
+			usleep(100);
+		pthread_mutex_lock(&tmp->mutex[tmp->philo[idx].right]);
+		if (tmp->fork[idx] == 0)
+		{
+		tmp->fork[idx] = 1;
+		//print_time_stamp(tmp, idx, PICK_UP_FORK);
+		}
+		pthread_mutex_lock(&tmp->mutex[tmp->philo[idx].left]);
+		if (tmp->fork[(tmp->number_of_philo + idx - 1) % tmp->number_of_philo]== 0)
+		{
+			tmp->fork[(tmp->number_of_philo + idx - 1) % tmp->number_of_philo] = 1;
+		//	print_time_stamp(tmp, idx, PICK_UP_FORK);
+		}
+		// eating
+		if (tmp->fork[idx] == 1 && tmp->fork[(tmp->number_of_philo + idx - 1) % tmp->number_of_philo] == 1)
+		{
+			print_time_stamp(tmp, idx, IS_EATING);
+			precision_sleep(tmp->time_to_eat);
+			pthread_mutex_lock(&tmp->time_mutex[idx]);
+			gettimeofday(&tmp->philo[idx].last_eat, NULL);
+			pthread_mutex_unlock(&tmp->time_mutex[idx]);
+			tmp->fork[tmp->philo[idx].left] = 0;
+			tmp->fork[tmp->philo[idx].right] = 0;
+		}
+		// fork mutex unlock
+		pthread_mutex_unlock(&tmp->mutex[tmp->philo[idx].left]);
+		pthread_mutex_unlock(&tmp->mutex[tmp->philo[idx].right]);
+		// sleep 
+		print_time_stamp(tmp, idx, IS_SLEEPING);
+		precision_sleep(tmp->time_to_sleep);
+		// think
+		//print_time_stamp(tmp, idx, IS_THINKING);
 	}
 	return (NULL);
 }
 
+int	monitor_thread(t_arg *arg)
+{
+	int 			i;
+	int				is_dead;
+	struct timeval	now;
+	int				time;
+
+	i = 0;
+	is_dead = 0;
+	while (i < arg->number_of_philo)
+	{
+		gettimeofday(&now, NULL);
+		pthread_mutex_lock(&arg->time_mutex[i]);
+		if ((time = ((now.tv_sec - arg->philo[i].last_eat.tv_sec) * 1000 \
+				+ (now.tv_usec - arg->philo[i].last_eat.tv_usec) / 1000) \
+				> arg->time_to_die))
+		{
+			is_dead = 1;
+			break;
+		}
+		pthread_mutex_unlock(&arg->time_mutex[i]);
+		//printf("time = %d\n", time);
+		i++;
+	}
+	if (is_dead)
+	{
+		pthread_mutex_unlock(&arg->time_mutex[i]);
+		printf("%ld %d died\n", (now.tv_sec - arg->start->tv_sec) * 1000 \
+				+ (now.tv_usec - arg->start->tv_usec) / 1000, i);
+		return (i);
+	}
+	return (0);
+}
+
 int	main(int argc, char **argv)
 {
-	t_time_info	*info;
-	pthread_t	*tid;
 	t_arg		*arg;
+	t_philo		*philo;
+	pthread_t	*tid;
 	int			i;
-	int			tid_num;
 
-	(void)argc;
-//	if (argc != 6)
-//		return (-1);
-	// init region //
-	info = init_info(argv);
-	gettimeofday(&info->start, NULL);
-	arg = init_arg(info);
-	pthread_mutex_init(&info->mutex, NULL);
-	tid = (pthread_t *)malloc(sizeof(pthread_t) * info->number_of_philo + 1);
+	if (!(argc == 6 || argc == 5))
+		return (-1);
+	arg = init_arg(argv);
+	philo = (t_philo *)malloc(sizeof(t_philo) * arg->number_of_philo);
 	i = 0;
-	arg->index = i;
-	// practice thread //
-	while (i < info->number_of_philo)
+	while (i < arg->number_of_philo)
 	{
-		arg->index = i;
-		tid_num = pthread_create(tid + i++, NULL, pthread_handler, arg);
-		if (tid_num < 0)
-			return (-1);
+		gettimeofday(&philo[i].last_eat, NULL);
+		i++;
 	}
+	arg->philo = philo;
 	i = 0;
-	// free region // 
-	while (i < info->number_of_philo)
+	if (argc == 6)		
+		while (i < arg->number_of_philo)
+			arg->philo[i++].eat_cnt = ft_atoi(argv[5]);
+	i = 0;
+	tid = (pthread_t *)malloc(sizeof(pthread_t) * arg->number_of_philo);
+	while (i < arg->number_of_philo)
+	{
+		if (pthread_create(tid + i, NULL, handler, (void *)arg))
+			return (-1);
+		i++;
+	}
+	
+	while (1)
+	{
+		
+		if (monitor_thread(arg))
+			break ;
+	}
+	
+	i = 0;
+	while (i < arg->number_of_philo)
 		pthread_join(tid[i++], NULL);
-	pthread_mutex_destroy(&info->mutex);
-	free(arg->state);
-	free(arg);
-	free(info);
+	i = 0;
+	while (i < arg->number_of_philo)
+		pthread_mutex_destroy(&arg->mutex[i++]);
+	pthread_mutex_destroy(&arg->philo_mutex);
 }

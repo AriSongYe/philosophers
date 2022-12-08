@@ -6,7 +6,7 @@
 #    By: yecsong <yecsong@student.42seoul.kr>       +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2022/11/30 06:35:21 by yecsong           #+#    #+#              #
-#    Updated: 2022/11/30 06:45:07 by yecsong          ###   ########.fr        #
+#    Updated: 2022/12/08 18:06:43 by yecsong          ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -23,7 +23,7 @@ CFLAGS := -Werror -Wextra -Wall -pthread
 all : $(NAME)
 
 
-$(NAME) :
+$(NAME) : $(OBJS)
 		$(MAKE) -C ./libft all
 		$(CC) $(CFLAGS) $(SRCS) ./libft/libft.a  -o philo
 
