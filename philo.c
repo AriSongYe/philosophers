@@ -6,7 +6,7 @@
 /*   By: yecsong <yecsong@student.42seoul.kr>       +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/11/30 01:01:07 by yecsong           #+#    #+#             */
-/*   Updated: 2022/12/08 18:30:46 by yecsong          ###   ########.fr       */
+/*   Updated: 2022/12/09 14:56:52 by yecsong          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -72,37 +72,42 @@ t_arg	*init_arg(char **argv)
 
 void	print_time_stamp(t_arg *arg, int idx, int flag)
 {
-	int	diff;
-	
+	long 	now_ms;
+	long 	start;
+	long	diff;
 	gettimeofday(&arg->philo[idx].now, NULL);
-	diff = (arg->philo[idx].now.tv_sec - arg->start->tv_sec) * 1000 \
-		   + (arg->philo[idx].now.tv_usec - arg->start->tv_usec) / 1000;
-	if (flag == PICK_UP_FORK)
-		printf("%d %d has taken a fork\n", diff ,idx);
-	else if (flag == IS_EATING)
-		printf("%d %d is eating\n", diff ,idx);
-	else if (flag == IS_SLEEPING)
-		printf("%d %d is sleeping\n", diff ,idx);
-	else if (flag == IS_THINKING)
-		printf("%d %d is thinking\n", diff ,idx);
-	else if (flag == DIE)
-		printf("%d %d die\n", diff ,idx);
+	now_ms = arg->philo[idx].now.tv_sec * 1000 + arg->philo[idx].now.tv_usec / 1000;
+	start = arg->start->tv_sec * 1000 +  arg->start->tv_usec / 1000;
+	diff = now_ms - start;
+	pthread_mutex_lock(&arg->philo_mutex);
+	if (!arg->is_dead)
+	{
+		if (flag == PICK_UP_FORK)
+			printf("%ld %d has taken a fork\n", diff ,idx);
+		else if (flag == IS_EATING)
+			printf("%ld %d is eating\n", diff ,idx);
+		else if (flag == IS_SLEEPING)
+			printf("%ld %d is sleeping\n", diff ,idx);
+		else if (flag == IS_THINKING)
+			printf("%ld %d is thinking\n", diff ,idx);
+	}
+	pthread_mutex_unlock(&arg->philo_mutex);
 }
 
 void	precision_sleep(int time)
 {
 	struct timeval	now;
-	int				now_ms;
-	int				start;
+	long			now_ms;
+	long			start;
 
 	gettimeofday(&now, NULL);
+	usleep(time * 900);
 	start =  now.tv_sec * 1000 + now.tv_usec / 1000;
-	while (1)
+	now_ms = now.tv_sec * 1000 + now.tv_usec / 1000;
+	while (now_ms < start + time)
 	{
 		gettimeofday(&now, NULL);
 		now_ms = now.tv_sec * 1000 + now.tv_usec / 1000;
-		if (now_ms > start + time)
-			break ;
 	}
 }
 
@@ -179,7 +184,13 @@ void	*handler(void *arg)
 		precision_sleep(tmp->time_to_sleep);
 		// think
 		//print_time_stamp(tmp, idx, IS_THINKING);
+		pthread_mutex_lock(&tmp->philo_mutex);
+		if (tmp->is_dead == 1)
+			break;
+		pthread_mutex_unlock(&tmp->philo_mutex);
+		// check_dead
 	}
+	pthread_mutex_unlock(&tmp->philo_mutex);
 	return (NULL);
 }
 
@@ -188,7 +199,7 @@ int	monitor_thread(t_arg *arg)
 	int 			i;
 	int				is_dead;
 	struct timeval	now;
-	int				time;
+	long			time;
 
 	i = 0;
 	is_dead = 0;
@@ -210,9 +221,12 @@ int	monitor_thread(t_arg *arg)
 	if (is_dead)
 	{
 		pthread_mutex_unlock(&arg->time_mutex[i]);
+		pthread_mutex_lock(&arg->philo_mutex);
+		arg->is_dead = 1;
+		pthread_mutex_unlock(&arg->philo_mutex);
 		printf("%ld %d died\n", (now.tv_sec - arg->start->tv_sec) * 1000 \
 				+ (now.tv_usec - arg->start->tv_usec) / 1000, i);
-		return (i);
+		return (1);
 	}
 	return (0);
 }
